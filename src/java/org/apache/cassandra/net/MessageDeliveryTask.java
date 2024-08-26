@@ -48,7 +48,13 @@ public class MessageDeliveryTask implements Runnable
         if (MessagingService.DROPPABLE_VERBS.contains(verb)
             && System.currentTimeMillis() > constructionTime + message.getTimeout())
         {
-            MessagingService.instance().incrementDroppedMessages(verb, isCrossNodeTimestamp);
+            assert MessagingService.DROPPABLE_VERBS.contains(verb) : "Verb " + verb + " should not legally be dropped";
+            MessagingService.DroppedMessages droppedMessages = MessagingService.instance().droppedMessagesMap.get(verb);
+            droppedMessages.metrics.dropped.mark();
+            if (isCrossNodeTimestamp)
+                droppedMessages.droppedCrossNodeTimeout.incrementAndGet();
+            else
+                droppedMessages.droppedInternalTimeout.incrementAndGet();
             return;
         }
 

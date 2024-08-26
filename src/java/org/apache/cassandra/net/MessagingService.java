@@ -31,7 +31,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import javax.management.MBeanServer;
 import javax.management.ObjectName;
 
-import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Function;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
@@ -873,13 +872,10 @@ public final class MessagingService implements MessagingServiceMBean
 
     public void incrementDroppedMessages(Verb verb)
     {
-        incrementDroppedMessages(verb, false);
-    }
-
-    public void incrementDroppedMessages(Verb verb, boolean isCrossNodeTimeout)
-    {
         assert DROPPABLE_VERBS.contains(verb) : "Verb " + verb + " should not legally be dropped";
-        incrementDroppedMessages(droppedMessagesMap.get(verb), isCrossNodeTimeout);
+        DroppedMessages droppedMessages = droppedMessagesMap.get(verb);
+        droppedMessages.metrics.dropped.mark();
+        droppedMessages.droppedInternalTimeout.incrementAndGet();
     }
 
     /**
@@ -887,36 +883,18 @@ public final class MessagingService implements MessagingServiceMBean
      */
     private void incrementRejectedMessages(Verb verb)
     {
-        DroppedMessages droppedMessages = droppedMessagesMap.get(verb);
-        if (droppedMessages == null)
+        DroppedMessages metrics = droppedMessagesMap.get(verb);
+        if (metrics == null)
         {
-            droppedMessages = new DroppedMessages(verb);
-            droppedMessagesMap.put(verb, droppedMessages);
+            metrics = new DroppedMessages(verb);
+            droppedMessagesMap.put(verb, metrics);
         }
-        incrementDroppedMessages(droppedMessagesMap.get(verb), false);
-    }
-
-    private void incrementDroppedMessages(DroppedMessages droppedMessages, boolean isCrossNodeTimeout)
-    {
-        droppedMessages.metrics.dropped.mark();
-        if (isCrossNodeTimeout)
-            droppedMessages.droppedCrossNodeTimeout.incrementAndGet();
-        else
-            droppedMessages.droppedInternalTimeout.incrementAndGet();
+        DroppedMessages droppedMessages1 = droppedMessagesMap.get(verb);
+        droppedMessages1.metrics.dropped.mark();
+        droppedMessages1.droppedInternalTimeout.incrementAndGet();
     }
 
     private void logDroppedMessages()
-    {
-        List<String> logs = getDroppedMessagesLogs();
-        for (String log : logs)
-            logger.error(log);
-
-        if (logs.size() > 0)
-            StatusLogger.log();
-    }
-
-    @VisibleForTesting
-    List<String> getDroppedMessagesLogs()
     {
         List<String> ret = new ArrayList<>();
         for (Map.Entry<Verb, DroppedMessages> entry : droppedMessagesMap.entrySet())
@@ -935,7 +913,12 @@ public final class MessagingService implements MessagingServiceMBean
                                       droppedCrossNodeTimeout));
             }
         }
-        return ret;
+        List<String> logs = ret;
+        for (String log : logs)
+            logger.error(log);
+
+        if (logs.size() > 0)
+            StatusLogger.log();
     }
 
     private static class SocketThread extends Thread
