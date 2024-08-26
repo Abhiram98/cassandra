@@ -297,7 +297,7 @@ public class ThriftColumnFamilyTest extends PigTestBase
     }
 
     @Test
-    public void testCqlNativeStorageSchema() throws IOException
+    public void testCassandraStorageSchema() throws IOException
     {
         //results: (qux,(atomic_weight,0.660161815846869),(created,1335890877),(name,User Qux),(percent,64.7),
         //(rating,2),(score,12000),(vote_type,dislike))
@@ -336,7 +336,7 @@ public class ThriftColumnFamilyTest extends PigTestBase
     }
 
     @Test
-    public void testCqlNativeStorageFullCopy() throws IOException
+    public void testCassandraStorageFullCopy() throws IOException
     {
         pig.setBatchOn();
         pig.registerQuery("rows = LOAD 'cql://thrift_ks/some_app?" + defaultParameters + nativeParameters + "&input_cql=select%20*%20from%20some_app%20where%20token(key)%20%3E%20%3F%20and%20token(key)%20%3C%3D%20%3F' USING CqlNativeStorage();");
@@ -350,7 +350,7 @@ public class ThriftColumnFamilyTest extends PigTestBase
     }
 
     @Test
-    public void testCqlNativeStorageSingleTupleCopy() throws IOException
+    public void testCassandraStorageSingleTupleCopy() throws IOException
     {
         executeCQLStatements(deleteCopyOfSomeAppTableData);
         pig.setBatchOn();
@@ -369,7 +369,7 @@ public class ThriftColumnFamilyTest extends PigTestBase
     }
 
     @Test
-    public void testCqlNativeStorageBagOnlyCopy() throws IOException
+    public void testCassandraStorageBagOnlyCopy() throws IOException
     {
         executeCQLStatements(deleteCopyOfSomeAppTableData);
         pig.setBatchOn();
@@ -390,7 +390,7 @@ public class ThriftColumnFamilyTest extends PigTestBase
     }
 
     @Test
-    public void testCqlNativeStorageFilter() throws IOException
+    public void testCassandraStorageFilter() throws IOException
     {
         executeCQLStatements(deleteCopyOfSomeAppTableData);
         pig.setBatchOn();
@@ -430,7 +430,7 @@ public class ThriftColumnFamilyTest extends PigTestBase
     }
 
     @Test
-    public void testCqlNativeStorageJoin() throws IOException
+    public void testCassandraStorageJoin() throws IOException
     {
         //test key types with a join
         pig.registerQuery("U8 = load 'cql://thrift_ks/u8?" + defaultParameters + nativeParameters + "&input_cql=select%20*%20from%20u8%20where%20token(key)%20%3E%20%3F%20and%20token(key)%20%3C%3D%20%3F' using CqlNativeStorage();");
@@ -468,7 +468,7 @@ public class ThriftColumnFamilyTest extends PigTestBase
     }
 
     @Test
-    public void testCqlNativeStorageCounterCF() throws IOException
+    public void testCassandraStorageCounterCF() throws IOException
     {
         //Test counter column family support
         pig.registerQuery("CC = load 'cql://thrift_ks/cc?" + defaultParameters + nativeParameters + "&input_cql=select%20*%20from%20cc%20where%20token(key)%20%3E%20%3F%20and%20token(key)%20%3C%3D%20%3F' using CqlNativeStorage();");
@@ -482,7 +482,7 @@ public class ThriftColumnFamilyTest extends PigTestBase
     }
 
     @Test
-    public void testCqlNativeStorageCompositeColumnCF() throws IOException
+    public void testCassandraStorageCompositeColumnCF() throws IOException
     {
         //Test CompositeType
         pig.registerQuery("compo = load 'cql://thrift_ks/compo?" + defaultParameters + nativeParameters + "&input_cql=select%20*%20from%20compo%20where%20token(key)%20%3E%20%3F%20and%20token(key)%20%3C%3D%20%3F' using CqlNativeStorage();");
@@ -546,7 +546,7 @@ public class ThriftColumnFamilyTest extends PigTestBase
     }
 
     @Test
-    public void testCqlNativeStorageCompositeKeyCF() throws IOException
+    public void testCassandraStorageCompositeKeyCF() throws IOException
     {
         //Test CompositeKey
         pig.registerQuery("compokeys = load 'cql://thrift_ks/compo_key?" + defaultParameters + nativeParameters + "&input_cql=select%20*%20from%20compo_key%20where%20token(key,column1)%20%3E%20%3F%20and%20token(key,column1)%20%3C%3D%20%3F' using CqlNativeStorage();");
@@ -607,11 +607,11 @@ public class ThriftColumnFamilyTest extends PigTestBase
         String query = String.format("SELECT %s FROM %s WHERE key = '%s'", colName, cf, key);
 
         ResultSet rows = client.execute(query);
-        Row row = rows.one();
+        Row got = rows.one();
 
-        if (row == null || row.isNull(0))
+        if (got == null || got.isNull(0))
             return null;
 
-        return parseType(validator).getString(row.getBytesUnsafe(0));
+        return parseType(validator).getString(got.getBytesUnsafe(0));
     }
 }
