@@ -601,22 +601,22 @@ public class Schema
         MigrationManager.instance.notifyDropFunction(udf);
     }
 
-    public void addAggregate(UDAggregate uda)
+    public void addAggregate(UDAggregate udf)
     {
-        addFunctionInternal(uda);
-        MigrationManager.instance.notifyCreateAggregate(uda);
+        addFunctionInternal(udf);
+        MigrationManager.instance.notifyCreateAggregate(udf);
     }
 
-    public void updateAggregate(UDAggregate uda)
+    public void updateAggregate(UDAggregate udf)
     {
-        updateFunctionInternal(uda);
-        MigrationManager.instance.notifyUpdateAggregate(uda);
+        updateFunctionInternal(udf);
+        MigrationManager.instance.notifyUpdateAggregate(udf);
     }
 
-    public void dropAggregate(UDAggregate uda)
+    public void dropAggregate(UDAggregate udf)
     {
-        dropFunctionInternal(uda);
-        MigrationManager.instance.notifyDropAggregate(uda);
+        dropFunctionInternal(udf);
+        MigrationManager.instance.notifyDropAggregate(udf);
     }
 
     private void addFunctionInternal(Function fun)
