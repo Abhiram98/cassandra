@@ -604,22 +604,23 @@ public class QueryProcessor implements QueryHandler
 
         public void onCreateFunction(String ksName, String functionName, List<AbstractType<?>> argTypes)
         {
-            onCreateFunctionInternal(ksName, functionName, argTypes);
-        }
-
-        public void onCreateAggregate(String ksName, String aggregateName, List<AbstractType<?>> argTypes)
-        {
-            onCreateFunctionInternal(ksName, aggregateName, argTypes);
-        }
-
-        private static void onCreateFunctionInternal(String ksName, String functionName, List<AbstractType<?>> argTypes)
-        {
             // in case there are other overloads, we have to remove all overloads since argument type
             // matching may change (due to type casting)
             if (Schema.instance.getKSMetaData(ksName).functions.get(new FunctionName(ksName, functionName)).size() > 1)
             {
                 removeInvalidPreparedStatementsForFunction(preparedStatements.values().iterator(), ksName, functionName);
                 removeInvalidPreparedStatementsForFunction(thriftPreparedStatements.values().iterator(), ksName, functionName);
+            }
+        }
+
+        public void onCreateAggregate(String ksName, String aggregateName, List<AbstractType<?>> argTypes)
+        {
+            // in case there are other overloads, we have to remove all overloads since argument type
+            // matching may change (due to type casting)
+            if (Schema.instance.getKSMetaData(ksName).functions.get(new FunctionName(ksName, aggregateName)).size() > 1)
+            {
+                removeInvalidPreparedStatementsForFunction(preparedStatements.values().iterator(), ksName, aggregateName);
+                removeInvalidPreparedStatementsForFunction(thriftPreparedStatements.values().iterator(), ksName, aggregateName);
             }
         }
 
@@ -644,18 +645,14 @@ public class QueryProcessor implements QueryHandler
 
         public void onDropFunction(String ksName, String functionName, List<AbstractType<?>> argTypes)
         {
-            onDropFunctionInternal(ksName, functionName, argTypes);
+            removeInvalidPreparedStatementsForFunction(preparedStatements.values().iterator(), ksName, functionName);
+            removeInvalidPreparedStatementsForFunction(thriftPreparedStatements.values().iterator(), ksName, functionName);
         }
 
         public void onDropAggregate(String ksName, String aggregateName, List<AbstractType<?>> argTypes)
         {
-            onDropFunctionInternal(ksName, aggregateName, argTypes);
-        }
-
-        private static void onDropFunctionInternal(String ksName, String functionName, List<AbstractType<?>> argTypes)
-        {
-            removeInvalidPreparedStatementsForFunction(preparedStatements.values().iterator(), ksName, functionName);
-            removeInvalidPreparedStatementsForFunction(thriftPreparedStatements.values().iterator(), ksName, functionName);
+            removeInvalidPreparedStatementsForFunction(preparedStatements.values().iterator(), ksName, aggregateName);
+            removeInvalidPreparedStatementsForFunction(thriftPreparedStatements.values().iterator(), ksName, aggregateName);
         }
 
         private static void removeInvalidPreparedStatementsForFunction(Iterator<ParsedStatement.Prepared> statements,
