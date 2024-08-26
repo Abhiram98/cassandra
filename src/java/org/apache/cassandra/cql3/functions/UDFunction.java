@@ -269,9 +269,92 @@ public abstract class UDFunction extends AbstractFunction implements ScalarFunct
         try
         {
             // Using async UDF execution is expensive (adds about 100us overhead per invocation on a Core-i7 MBPr).
-            ByteBuffer result = DatabaseDescriptor.enableUserDefinedFunctionsThreads()
-                                ? executeAsync(protocolVersion, parameters)
-                                : executeUserDefined(protocolVersion, parameters);
+            ByteBuffer result;
+            if (DatabaseDescriptor.enableUserDefinedFunctionsThreads())
+            {
+                ByteBuffer result1 = null;
+                boolean finished = false;
+                ThreadIdAndCpuTime threadIdAndCpuTime = new ThreadIdAndCpuTime();
+
+                Future<ByteBuffer> future = executor().submit(() -> {
+                    threadIdAndCpuTime.setup();
+                    return executeUserDefined(protocolVersion, parameters);
+                });
+
+                try
+                {
+                    if (DatabaseDescriptor.getUserDefinedFunctionWarnTimeout() > 0)
+                        try
+                        {
+                            result1 = future.get(DatabaseDescriptor.getUserDefinedFunctionWarnTimeout(), TimeUnit.MILLISECONDS);
+                            finished = true;
+                        }
+                        catch (TimeoutException e)
+                        {
+
+                            // log and emit a warning that UDF execution took long
+                            String warn = String.format("User defined function %s ran longer than %dms", this, DatabaseDescriptor.getUserDefinedFunctionWarnTimeout());
+                            logger.warn(warn);
+                            ClientWarn.warn(warn);
+                        }
+                    if (!finished)
+                    {// retry with difference of warn-timeout to fail-timeout
+                        result1 = future.get(DatabaseDescriptor.getUserDefinedFunctionFailTimeout() - DatabaseDescriptor.getUserDefinedFunctionWarnTimeout(), TimeUnit.MILLISECONDS);
+                    }
+                }
+                catch (InterruptedException e)
+                {
+                    Thread.currentThread().interrupt();
+                    throw new RuntimeException(e);
+                }
+                catch (ExecutionException e)
+                {
+                    Throwable c = e.getCause();
+                    if (c instanceof RuntimeException)
+                        throw (RuntimeException) c;
+                    throw new RuntimeException(c);
+                }
+                catch (TimeoutException e)
+                {
+                    // retry a last time with the difference of UDF-fail-timeout to consumed CPU time (just in case execution hit a badly timed GC)
+                    try
+                    {
+                        long cpuTimeMillis = threadMXBean.getThreadCpuTime(threadIdAndCpuTime.threadId) - threadIdAndCpuTime.cpuTime;
+                        cpuTimeMillis /= 1000000L;
+
+                        result1 = future.get(Math.max(DatabaseDescriptor.getUserDefinedFunctionFailTimeout() - cpuTimeMillis, 0L),
+                                             TimeUnit.MILLISECONDS);
+                    }
+                    catch (InterruptedException e1)
+                    {
+                        Thread.currentThread().interrupt();
+                        throw new RuntimeException(e);
+                    }
+                    catch (ExecutionException e1)
+                    {
+                        Throwable c = e.getCause();
+                        if (c instanceof RuntimeException)
+                            throw (RuntimeException) c;
+                        throw new RuntimeException(c);
+                    }
+                    catch (TimeoutException e1)
+                    {
+                        TimeoutException cause = new TimeoutException(String.format("User defined function %s ran longer than %dms%s",
+                                                                                    this,
+                                                                                    DatabaseDescriptor.getUserDefinedFunctionFailTimeout(),
+                                                                                    DatabaseDescriptor.getUserFunctionTimeoutPolicy() == Config.UserFunctionTimeoutPolicy.ignore
+                                                                                    ? "" : " - will stop Cassandra VM"));
+                        FunctionExecutionException fe = FunctionExecutionException.create(this, cause);
+                        JVMStabilityInspector.userFunctionTimeout(cause);
+                        throw fe;
+                    }
+                }
+                result = result1;
+            }
+            else
+            {
+                result = executeUserDefined(protocolVersion, parameters);
+            }
             Tracing.trace("Executed UDF {} in {}\u03bcs", name(), (System.nanoTime() - tStart) / 1000);
             return result;
         }
@@ -311,83 +394,6 @@ public abstract class UDFunction extends AbstractFunction implements ScalarFunct
         {
             this.threadId = Thread.currentThread().getId();
             this.cpuTime = threadMXBean.getCurrentThreadCpuTime();
-        }
-    }
-
-    private ByteBuffer executeAsync(int protocolVersion, List<ByteBuffer> parameters)
-    {
-        ThreadIdAndCpuTime threadIdAndCpuTime = new ThreadIdAndCpuTime();
-
-        Future<ByteBuffer> future = executor().submit(() -> {
-            threadIdAndCpuTime.setup();
-            return executeUserDefined(protocolVersion, parameters);
-        });
-
-        try
-        {
-            if (DatabaseDescriptor.getUserDefinedFunctionWarnTimeout() > 0)
-                try
-                {
-                    return future.get(DatabaseDescriptor.getUserDefinedFunctionWarnTimeout(), TimeUnit.MILLISECONDS);
-                }
-                catch (TimeoutException e)
-                {
-
-                    // log and emit a warning that UDF execution took long
-                    String warn = String.format("User defined function %s ran longer than %dms", this, DatabaseDescriptor.getUserDefinedFunctionWarnTimeout());
-                    logger.warn(warn);
-                    ClientWarn.warn(warn);
-                }
-
-            // retry with difference of warn-timeout to fail-timeout
-            return future.get(DatabaseDescriptor.getUserDefinedFunctionFailTimeout() - DatabaseDescriptor.getUserDefinedFunctionWarnTimeout(), TimeUnit.MILLISECONDS);
-        }
-        catch (InterruptedException e)
-        {
-            Thread.currentThread().interrupt();
-            throw new RuntimeException(e);
-        }
-        catch (ExecutionException e)
-        {
-            Throwable c = e.getCause();
-            if (c instanceof RuntimeException)
-                throw (RuntimeException) c;
-            throw new RuntimeException(c);
-        }
-        catch (TimeoutException e)
-        {
-            // retry a last time with the difference of UDF-fail-timeout to consumed CPU time (just in case execution hit a badly timed GC)
-            try
-            {
-                long cpuTimeMillis = threadMXBean.getThreadCpuTime(threadIdAndCpuTime.threadId) - threadIdAndCpuTime.cpuTime;
-                cpuTimeMillis /= 1000000L;
-
-                return future.get(Math.max(DatabaseDescriptor.getUserDefinedFunctionFailTimeout() - cpuTimeMillis, 0L),
-                                  TimeUnit.MILLISECONDS);
-            }
-            catch (InterruptedException e1)
-            {
-                Thread.currentThread().interrupt();
-                throw new RuntimeException(e);
-            }
-            catch (ExecutionException e1)
-            {
-                Throwable c = e.getCause();
-                if (c instanceof RuntimeException)
-                    throw (RuntimeException) c;
-                throw new RuntimeException(c);
-            }
-            catch (TimeoutException e1)
-            {
-                TimeoutException cause = new TimeoutException(String.format("User defined function %s ran longer than %dms%s",
-                                                                            this,
-                                                                            DatabaseDescriptor.getUserDefinedFunctionFailTimeout(),
-                                                                            DatabaseDescriptor.getUserFunctionTimeoutPolicy() == Config.UserFunctionTimeoutPolicy.ignore
-                                                                            ? "" : " - will stop Cassandra VM"));
-                FunctionExecutionException fe = FunctionExecutionException.create(this, cause);
-                JVMStabilityInspector.userFunctionTimeout(cause);
-                throw fe;
-            }
         }
     }
 
@@ -473,12 +479,7 @@ public abstract class UDFunction extends AbstractFunction implements ScalarFunct
      */
     protected ByteBuffer decompose(int protocolVersion, Object value)
     {
-        return decompose(returnDataType, protocolVersion, value);
-    }
-
-    protected static ByteBuffer decompose(DataType dataType, int protocolVersion, Object value)
-    {
-        return value == null ? null : dataType.serialize(value, ProtocolVersion.fromInt(protocolVersion));
+        return value == null ? null : returnDataType.serialize(value, ProtocolVersion.fromInt(protocolVersion));
     }
 
     @Override

@@ -23,7 +23,6 @@ import java.util.List;
 
 import com.datastax.driver.core.DataType;
 import com.datastax.driver.core.ProtocolVersion;
-import org.apache.cassandra.db.marshal.AbstractType;
 
 /**
  * Base class for all Java UDFs.
@@ -51,7 +50,7 @@ public abstract class JavaUDF
 
     protected ByteBuffer decompose(int protocolVersion, Object value)
     {
-        return UDFunction.decompose(returnDataType, protocolVersion, value);
+        return value == null ? null : returnDataType.serialize(value, ProtocolVersion.fromInt(protocolVersion));
     }
 
     // do not remove - used by generated Java UDFs
