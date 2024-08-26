@@ -223,7 +223,12 @@ public class MaterializedViewManager
     public void dumpMemtables()
     {
         for (ColumnFamilyStore viewCfs : allViewsCfs())
-            viewCfs.dumpMemtable();
+            synchronized (viewCfs.data)
+            {
+                final ColumnFamilyStore.Flush flush = new ColumnFamilyStore.Flush(true);
+                ColumnFamilyStore.flushExecutor.execute(flush);
+                ColumnFamilyStore.postFlushExecutor.submit(flush.postFlush);
+            }
     }
 
     public void truncateBlocking(long truncatedAt)

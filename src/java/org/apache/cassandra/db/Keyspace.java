@@ -130,7 +130,7 @@ public class Keyspace
 
                     // keyspace has to be constructed and in the cache before cacheRow can be called
                     for (ColumnFamilyStore cfs : keyspaceInstance.getColumnFamilyStores())
-                        cfs.init();
+                        cfs.initRowCache();
                 }
             }
         }
@@ -367,7 +367,7 @@ public class Keyspace
             if (oldCfs != null)
                 throw new IllegalStateException("added multiple mappings for cf id " + cfId);
 
-            newCfs.init();
+            newCfs.initRowCache();
         }
         else
         {

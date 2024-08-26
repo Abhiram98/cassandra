@@ -577,7 +577,7 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
     }
 
     // must be called after all sstables are loaded since row cache merges all row versions
-    public void init()
+    public void initRowCache()
     {
         materializedViewManager.init();
 
@@ -1849,7 +1849,12 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
         }
         else
         {
-            dumpMemtable();
+            synchronized (data)
+            {
+                final Flush flush = new Flush(true);
+                flushExecutor.execute(flush);
+                postFlushExecutor.submit(flush.postFlush);
+            }
             materializedViewManager.dumpMemtables();
         }
 
@@ -1882,19 +1887,6 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
         logger.debug("truncate complete");
     }
 
-    /**
-     * Drops current memtable without flushing to disk. This should only be called when truncating a column family which is not durable.
-     */
-    public void dumpMemtable()
-    {
-        synchronized (data)
-        {
-            final Flush flush = new Flush(true);
-            flushExecutor.execute(flush);
-            postFlushExecutor.submit(flush.postFlush);
-        }
-    }
-
     public <V> V runWithCompactionsDisabled(Callable<V> callable, boolean interruptValidation, boolean interruptViews)
     {
         // synchronize so that concurrent invocations don't re-enable compactions partway through unexpectedly,
@@ -1903,20 +1895,20 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
         {
             logger.debug("Cancelling in-progress compactions for {}", metadata.cfName);
 
-            Iterable<ColumnFamilyStore> selfWithAuxiliaryCfs = interruptViews
+            Iterable<ColumnFamilyStore> selfWithIndexes = interruptViews
                                                                ? Iterables.concat(concatWithIndexes(), materializedViewManager.allViewsCfs())
                                                                : concatWithIndexes();
 
-            for (ColumnFamilyStore cfs : selfWithAuxiliaryCfs)
+            for (ColumnFamilyStore cfs : selfWithIndexes)
                 cfs.getCompactionStrategyManager().pause();
             try
             {
                 // interrupt in-progress compactions
-                CompactionManager.instance.interruptCompactionForCFs(selfWithAuxiliaryCfs, interruptValidation);
-                CompactionManager.instance.waitForCessation(selfWithAuxiliaryCfs);
+                CompactionManager.instance.interruptCompactionForCFs(selfWithIndexes, interruptValidation);
+                CompactionManager.instance.waitForCessation(selfWithIndexes);
 
                 // doublecheck that we finished, instead of timing out
-                for (ColumnFamilyStore cfs : selfWithAuxiliaryCfs)
+                for (ColumnFamilyStore cfs : selfWithIndexes)
                 {
                     if (!cfs.getTracker().getCompacting().isEmpty())
                     {
@@ -1938,7 +1930,7 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
             }
             finally
             {
-                for (ColumnFamilyStore cfs : selfWithAuxiliaryCfs)
+                for (ColumnFamilyStore cfs : selfWithIndexes)
                     cfs.getCompactionStrategyManager().resume();
             }
         }
